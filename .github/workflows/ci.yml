@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, 'LTS-*' ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [ 22, 24 ]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      # No runtime deps of its own; install the peer binding for the CLI smoke tests.
+      # NOTE: requires @digitalsubstrate/dsviper >= 1.2.3 on npm (the binding stub fixes the
+      # tools rely on). Until 1.2.3 ships, this resolves to nothing and the gate stays red — by
+      # design. The pure endpoint test runs regardless.
+      - name: Install peer binding
+        run: npm install --no-save "@digitalsubstrate/dsviper@>=1.2.3"
+
+      - name: Test
+        run: npm test

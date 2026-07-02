@@ -1,0 +1,38 @@
+name: Publish to npm
+
+# Tag-driven, independent of the binding's `node-v*` tags, the query package's `node-query-v*`
+# tags and the wheel's `v*` tags:
+#   node-tools-v0.1.0 → test (gate) → npm publish (dist-tag `latest`)
+# Pure JS — no build, no prebuilds. The `test` step is the release gate.
+
+on:
+  push:
+    tags: [ 'node-tools-v*' ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write   # npm provenance
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: 'https://registry.npmjs.org'
+
+      # Release gate: the peer binding must be published (>= 1.2.3) and the suite green.
+      - name: Install peer binding
+        run: npm install --no-save "@digitalsubstrate/dsviper@>=1.2.3"
+
+      - name: Test
+        run: npm test
+
+      - name: Publish
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

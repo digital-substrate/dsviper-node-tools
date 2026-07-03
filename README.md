@@ -2,7 +2,7 @@
 
 Node CLI + REPL tooling over [`@digitalsubstrate/dsviper`](https://www.npmjs.com/package/@digitalsubstrate/dsviper)
 — a port of the headless Python `dsviper-tools`. It doubles as a real-consumer validation of the
-N_Viper binding surface (it exercises the read/write/DSM/blob paths on real 3D databases).
+dsviper binding surface (it exercises the read/write/DSM/blob paths on real 3D databases).
 
 ## Tools
 

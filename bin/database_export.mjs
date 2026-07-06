@@ -15,16 +15,18 @@ const CHUNK_SIZE = 48 * 1024 * 1024;
 const enc = (v) => { const e = v.encoded(); return typeof e === 'string' ? e : v.representation(); };
 
 function parseArgs(argv) {
-    const args = { database: null, commitId: null, output: null, indent: 2, verbose: false };
+    const args = { database: null, commitId: null, output: null, indent: 2, format: 'json', verbose: false };
     for (let i = 0; i < argv.length; i++) {
         const a = argv[i];
         if (a === '--commit-id') args.commitId = argv[++i];
         else if (a === '--output') args.output = argv[++i];
         else if (a === '--indent') args.indent = Number(argv[++i]);
+        else if (a === '--format') args.format = argv[++i];
         else if (a === '-v' || a === '--verbose') args.verbose = true;
         else if (!a.startsWith('-') && args.database === null) args.database = a;
     }
-    if (!args.database) fail('usage: database_export <database> [--commit-id last|first|<id>] [--output dir] [--indent n] [-v]');
+    if (!args.database) fail('usage: database_export <database> [--commit-id last|first|<id>] [--output dir] [--indent n] [--format json|xml] [-v]');
+    if (args.format !== 'json' && args.format !== 'xml') fail(`--format must be json or xml, not ${args.format}`);
     return args;
 }
 
@@ -68,18 +70,23 @@ function openSource(args) {
     fail(`Not a dsviper Database or CommitDatabase: ${p}`);
 }
 
-const exportDefinitions = (src) => JSON.parse(src.definitions.toDsmDefinitions().toJsonString());
+const exportDefinitions = (src, fmt) => {
+    const dsm = src.definitions.toDsmDefinitions();
+    return fmt === 'xml' ? dsm.toXmlString(2) : JSON.parse(dsm.toJsonString());
+};
 
-function exportDocuments(src) {
+function exportDocuments(src, fmt) {
     const documents = {};
     let total = 0;
     for (const attachment of src.definitions.attachments()) {
         const entries = [];
-        // Store the JSON TEXT, not JSON.parse(...): a native JS object round-trip collapses a
+        // Store the wire TEXT, not JSON.parse(...): a native JS object round-trip collapses a
         // whole-number double (1.0 -> 1, JS `number` has no int/float split) and the strict Viper
         // decoder then rejects it. The text preserves the exact encoding losslessly.
         for (const [key, document] of src.attachmentGetting.enumerate(attachment, false))
-            entries.push({ key: Value.toJsonString(key), document: Value.toJsonString(document) });
+            entries.push(fmt === 'xml'
+                ? { key: Value.toXmlString(key), document: Value.toXmlString(document) }
+                : { key: Value.toJsonString(key), document: Value.toJsonString(document) });
         documents[attachment.identifier()] = entries;
         total += entries.length;
     }
@@ -128,7 +135,10 @@ function writeBundle(src, args, manifest, definitions, documents, blobIndex) {
     fs.mkdirSync(blobsDir, { recursive: true });
 
     dumpJson(path.join(outDir, 'manifest.json'), manifest, args.indent);
-    dumpJson(path.join(outDir, 'definitions.json'), definitions, args.indent);
+    if (args.format === 'xml')
+        fs.writeFileSync(path.join(outDir, 'definitions.xml'), definitions + '\n');
+    else
+        dumpJson(path.join(outDir, 'definitions.json'), definitions, args.indent);
     for (const [identifier, entries] of Object.entries(documents))
         dumpJson(path.join(documentsDir, `${safeName(identifier)}.json`), entries, args.indent);
 
@@ -149,12 +159,15 @@ function writeBundle(src, args, manifest, definitions, documents, blobIndex) {
 
 function main() {
     const args = parseArgs(process.argv.slice(2));
+    if (args.format === 'xml' && typeof Value.toXmlString !== 'function')
+        fail('--format xml requires a dsviper build with XML support.');
     const src = openSource(args);
     try {
-        const definitions = exportDefinitions(src);
-        const { documents, total } = exportDocuments(src);
+        const definitions = exportDefinitions(src, args.format);
+        const { documents, total } = exportDocuments(src, args.format);
         const blobIndex = exportBlobIndex(src);
         const manifest = buildManifest(src, total, blobIndex);
+        manifest.format = args.format;
         writeBundle(src, args, manifest, definitions, documents, blobIndex);
     } finally {
         src.handle.close();

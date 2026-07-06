@@ -20,7 +20,12 @@ function loadManifest(bundle) {
     if (!fs.existsSync(p)) fail(`Not an export bundle (missing manifest.json): ${bundle}`);
     return readJson(p);
 }
-function loadDefinitions(bundle) {
+function loadDefinitions(bundle, fmt) {
+    if (fmt === 'xml') {
+        const p = path.join(bundle, 'definitions.xml');
+        if (!fs.existsSync(p)) fail(`Not an export bundle (missing definitions.xml): ${bundle}`);
+        return DSMDefinitions.fromXmlString(fs.readFileSync(p, 'utf-8')).toDefinitions().const();
+    }
     const p = path.join(bundle, 'definitions.json');
     if (!fs.existsSync(p)) fail(`Not an export bundle (missing definitions.json): ${bundle}`);
     return DSMDefinitions.fromJsonString(fs.readFileSync(p, 'utf-8')).toDefinitions().const();
@@ -64,18 +69,22 @@ function importBlobs(store, bundle, blobIndex, verbose) {
     if (verbose) console.log(`Imported ${blobIndex.length} blobs`);
 }
 
-function importDocuments(definitions, bundle, setDocument, verbose) {
+function importDocuments(definitions, bundle, setDocument, verbose, fmt) {
     const documentsDir = path.join(bundle, 'documents');
     let total = 0;
     for (const attachment of definitions.attachments()) {
         const p = path.join(documentsDir, `${safeName(attachment.identifier())}.json`);
         if (!fs.existsSync(p)) continue;
-        // entry.key / entry.document are the exact JSON TEXT emitted at export (see the note there);
-        // fed straight to fromJsonString, losslessly — no JS-object round-trip that would collapse
-        // a whole-number double.
+        // entry.key / entry.document are the exact wire TEXT emitted at export (see the note there);
+        // fed straight to from{Json,Xml}String, losslessly — no JS-object round-trip that would
+        // collapse a whole-number double.
         for (const entry of readJson(p)) {
-            const key = Value.fromJsonString(entry.key, attachment.typeKey(), definitions);
-            const document = Value.fromJsonString(entry.document, attachment.documentType(), definitions);
+            const key = fmt === 'xml'
+                ? Value.fromXmlString(entry.key, attachment.typeKey(), definitions)
+                : Value.fromJsonString(entry.key, attachment.typeKey(), definitions);
+            const document = fmt === 'xml'
+                ? Value.fromXmlString(entry.document, attachment.documentType(), definitions)
+                : Value.fromJsonString(entry.document, attachment.documentType(), definitions);
             setDocument(attachment, key, document);
             total++;
         }
@@ -84,14 +93,14 @@ function importDocuments(definitions, bundle, setDocument, verbose) {
     return total;
 }
 
-function importIntoDatabase(output, documentation, definitions, bundle, blobIndex, verbose) {
+function importIntoDatabase(output, documentation, definitions, bundle, blobIndex, verbose, fmt) {
     const db = Database.create(output, documentation);
     try {
         db.extendDefinitions(definitions);
         const live = db.definitions();
         db.beginTransaction();
         importBlobs(db.databasing(), bundle, blobIndex, verbose);
-        const count = importDocuments(live, bundle, (a, k, d) => db.set(a, k, d), verbose);
+        const count = importDocuments(live, bundle, (a, k, d) => db.set(a, k, d), verbose, fmt);
         db.commit();
         return { count, hexdigest: db.definitionsHexdigest() };
     } catch (e) {
@@ -102,7 +111,7 @@ function importIntoDatabase(output, documentation, definitions, bundle, blobInde
     }
 }
 
-function importIntoCommitDatabase(output, documentation, definitions, bundle, blobIndex, label, verbose) {
+function importIntoCommitDatabase(output, documentation, definitions, bundle, blobIndex, label, verbose, fmt) {
     const cdb = CommitDatabase.create(output, documentation);
     try {
         cdb.extendDefinitions(definitions);
@@ -112,7 +121,7 @@ function importIntoCommitDatabase(output, documentation, definitions, bundle, bl
         importBlobs(store, bundle, blobIndex, verbose);
         store.commit();
         const mutable = new CommitMutableState(new CommitState(live));
-        const count = importDocuments(live, bundle, (a, k, d) => mutable.attachmentMutating().set(a, k, d), verbose);
+        const count = importDocuments(live, bundle, (a, k, d) => mutable.attachmentMutating().set(a, k, d), verbose, fmt);
         cdb.commitMutations(label, mutable);
         return { count, hexdigest: cdb.definitionsHexdigest() };
     } finally {
@@ -158,7 +167,10 @@ function main() {
     }
 
     const manifest = loadManifest(bundle);
-    const definitions = loadDefinitions(bundle);
+    const fmt = manifest.format || 'json';
+    if (fmt === 'xml' && typeof Value.fromXmlString !== 'function')
+        fail('bundle is in XML format but the installed dsviper lacks XML support.');
+    const definitions = loadDefinitions(bundle, fmt);
     const blobIndex = loadBlobIndex(bundle);
 
     const kind = args.targetKind || (manifest.source_type === 'CommitDatabase' ? 'commit-database' : 'database');
@@ -166,10 +178,10 @@ function main() {
 
     let result, label;
     if (kind === 'commit-database') {
-        result = importIntoCommitDatabase(output, documentation, definitions, bundle, blobIndex, args.label, args.verbose);
+        result = importIntoCommitDatabase(output, documentation, definitions, bundle, blobIndex, args.label, args.verbose, fmt);
         label = 'CommitDatabase';
     } else {
-        result = importIntoDatabase(output, documentation, definitions, bundle, blobIndex, args.verbose);
+        result = importIntoDatabase(output, documentation, definitions, bundle, blobIndex, args.verbose, fmt);
         label = 'Database';
     }
 

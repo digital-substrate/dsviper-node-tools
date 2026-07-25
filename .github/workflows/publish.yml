@@ -25,9 +25,9 @@ jobs:
           node-version: 22
           registry-url: 'https://registry.npmjs.org'
 
-      # Release gate: the peer binding must be published (>= 1.2.3) and the suite green.
+      # Release gate: the peer binding must be published (1.2 line) and the suite green.
       - name: Install peer binding
-        run: npm install --no-save "@digitalsubstrate/dsviper@>=1.2.3"
+        run: npm install --no-save "@digitalsubstrate/dsviper@>=1.2.8 <2"
 
       - name: Test
         run: npm test

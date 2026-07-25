@@ -21,11 +21,10 @@ jobs:
           node-version: ${{ matrix.node }}
 
       # No runtime deps of its own; install the peer binding for the CLI smoke tests.
-      # NOTE: requires @digitalsubstrate/dsviper >= 1.2.3 on npm (the binding stub fixes the
-      # tools rely on). Until 1.2.3 ships, this resolves to nothing and the gate stays red — by
-      # design. The pure endpoint test runs regardless.
+      # The floor is the binding stub fixes the tools rely on; the upper bound keeps the
+      # 1.2 line off a future 2.0 binding. The pure endpoint test runs regardless.
       - name: Install peer binding
-        run: npm install --no-save "@digitalsubstrate/dsviper@>=1.2.3"
+        run: npm install --no-save "@digitalsubstrate/dsviper@>=1.2.8 <2"
 
       - name: Test
         run: npm test

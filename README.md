@@ -12,6 +12,7 @@ dsviper binding surface (it exercises the read/write/DSM/blob paths on real 3D d
 | `database_import <bundle> <out> [--as database\|commit-database] [--force] [-v]` | Import a bundle into a NEW Database / CommitDatabase, preserving blob ids. |
 | `dsm_util <check\|encode\|decode\|create_database\|create_commit_database> …` | DSM utilities: parse-check, DSM ⇄ JSON, and empty-database creation from a `.dsm`. |
 | `commit_admin <reset\|reduce_heads\|sync> (--database D \| --host H [--port P] \| --socket-path S) …` | Administer a CommitDatabase: wipe commits, collapse heads, or sync into another CommitDatabase. |
+| `commit_database_server <db> [--socket-path S \| --host H --port P] [-v]` | Serve a CommitDatabase over a unix socket or TCP. `step()` is a *bounded* wait, so the loop yields between calls and the event loop keeps running — that is what lets SIGINT be delivered, as it is between bytecodes in Python. Only pure C++ loggers exist in this binding, so nothing can call back into JS from the C++ threads serving each client. |
 | `service_client [host] [port] \| [host:port] \| [port]` | The **universal REPL client** for any Viper service — connects a `ServiceRemote` and drops you into a `node:repl` with a fluent, tab-completable view over its function pools (`pools.Tools.add(12, 23)`), attachment pools, and the session live (`s`, `defs`). The Node twin of `python -i service_client.py`. |
 
 `database_export` then `database_import` round-trips a database losslessly (matching definitions
@@ -21,11 +22,9 @@ renders identically in the 3D application.
 ## Scope (port from the Python `dsviper-tools`)
 
 - **Ported** (headless): `database_export`, `database_import`, `dsm_util`, `commit_admin`,
-  `service_client` (REPL).
+  `service_client` (REPL), `commit_database_server`.
 - **Not ported**:
   - the QML editors (`cdbe` / `dbe`) — Qt/QML;
-  - the blocking `commit_database_server` — its thread-per-connection accept loop is incompatible
-    with the Node event loop (a synchronous REPL *client* is fine; a server is not);
   - the kibo code-generation subcommands of `dsm_util`
     (`create_python_package` / `create_node_package`) — they shell out to the Java generator, not
     the binding; a follow-up.

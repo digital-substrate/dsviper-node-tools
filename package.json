@@ -1,14 +1,15 @@
 {
   "name": "@digitalsubstrate/dsviper-tools",
   "version": "0.1.0",
-  "description": "Node CLI + REPL tooling over @digitalsubstrate/dsviper — a port of the headless Python dsviper-tools (offline Database/CommitDatabase tools + the universal service REPL client). GUI (cdbe/dbe) and the blocking server stay Python-only.",
+  "description": "Node CLI + REPL tooling over @digitalsubstrate/dsviper — a port of the headless Python dsviper-tools (offline Database/CommitDatabase tools, the commit-database server, and the universal service REPL client). GUI (cdbe/dbe) stays Python-only.",
   "type": "module",
   "bin": {
     "dsviper-database-export": "bin/database_export.mjs",
     "dsviper-database-import": "bin/database_import.mjs",
     "dsviper-dsm-util": "bin/dsm_util.mjs",
     "dsviper-commit-admin": "bin/commit_admin.mjs",
-    "dsviper-service-client": "bin/service_client.mjs"
+    "dsviper-service-client": "bin/service_client.mjs",
+    "dsviper-commit-database-server": "bin/commit_database_server.mjs"
   },
   "files": [
     "bin",
@@ -25,7 +26,7 @@
     "prepublishOnly": "npm test"
   },
   "peerDependencies": {
-    "@digitalsubstrate/dsviper": ">=1.2.8 <2"
+    "@digitalsubstrate/dsviper": ">=1.2.9 <2"
   },
   "keywords": [
     "dsviper",

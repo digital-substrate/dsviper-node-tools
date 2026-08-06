@@ -6,6 +6,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Least privilege: the test job only clones the repository and runs the suite.
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest

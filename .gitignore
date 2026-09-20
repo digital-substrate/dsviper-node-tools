@@ -3,3 +3,7 @@ node_modules/
 *.roundtrip.*
 .DS_Store
 .idea/
+
+# Claude Code — local only, not for distribution
+CLAUDE.md
+.claude/

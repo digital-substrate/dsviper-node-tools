@@ -9,17 +9,51 @@ import dsviper from '../src/dsviper.mjs';
 const { Database, CommitDatabase, CommitState, CommitMutableState, DSMDefinitions,
         BlobLayout, Value, ValueBlob, ValueBlobId } = dsviper;
 
-const CHUNK_SIZE = 48 * 1024 * 1024;
-const fail = (m) => { console.error(m); process.exit(1); };
-const readJson = (p) => JSON.parse(fs.readFileSync(p, 'utf-8'));
-const safeName = (id) => id.replace(/[^A-Za-z0-9._-]+/g, '_');
-const expand = (p) => p.replace(/^~(?=$|\/)/, os.homedir());
+/** @import * as V from '@digitalsubstrate/dsviper' */
 
+/**
+ * The fields of the bundle's manifest the import reads; each may be absent.
+ * @typedef {object} BundleManifest
+ * @property {string} [source_type]
+ * @property {string} [documentation]
+ * @property {string} [definitions_hexdigest]
+ * @property {string} [format]
+ * @property {{ documents?: number, blobs?: number }} [counts]
+ */
+/**
+ * One entry of the bundle's blob index.
+ * @typedef {{ id: string, layout: string, size: number, chunked: boolean }} BlobIndexEntry
+ */
+/**
+ * The key and document of one entry, as wire text.
+ * @typedef {{ key: string, document: string }} DocumentEntry
+ */
+/**
+ * Stores one document in the target.
+ * @typedef {(attachment: V.Attachment, key: V.ValueKey, document: V.Value) => unknown} SetDocument
+ */
+
+const CHUNK_SIZE = 48 * 1024 * 1024;
+/** @type {(m: string) => never} */
+const fail = (m) => { console.error(m); process.exit(1); };
+const readJson = (/** @type {string} */ p) => JSON.parse(fs.readFileSync(p, 'utf-8'));
+const safeName = (/** @type {string} */ id) => id.replace(/[^A-Za-z0-9._-]+/g, '_');
+const expand = (/** @type {string} */ p) => p.replace(/^~(?=$|\/)/, os.homedir());
+
+/**
+ * @param {string} bundle
+ * @returns {BundleManifest}
+ */
 function loadManifest(bundle) {
     const p = path.join(bundle, 'manifest.json');
     if (!fs.existsSync(p)) fail(`Not an export bundle (missing manifest.json): ${bundle}`);
     return readJson(p);
 }
+/**
+ * @param {string} bundle
+ * @param {string} fmt
+ * @returns {V.DefinitionsConst}
+ */
 function loadDefinitions(bundle, fmt) {
     if (fmt === 'xml') {
         const p = path.join(bundle, 'definitions.xml');
@@ -30,11 +64,21 @@ function loadDefinitions(bundle, fmt) {
     if (!fs.existsSync(p)) fail(`Not an export bundle (missing definitions.json): ${bundle}`);
     return DSMDefinitions.fromJsonString(fs.readFileSync(p, 'utf-8')).toDefinitions().const();
 }
+/**
+ * @param {string} bundle
+ * @returns {BlobIndexEntry[]}
+ */
 function loadBlobIndex(bundle) {
     const p = path.join(bundle, 'blobs', 'index.json');
     return fs.existsSync(p) ? readJson(p) : [];
 }
 
+/**
+ * @param {V.Databasing | V.CommitDatabasing} store
+ * @param {string} bundle
+ * @param {BlobIndexEntry[]} blobIndex
+ * @param {boolean} verbose
+ */
 function importBlobs(store, bundle, blobIndex, verbose) {
     const blobsDir = path.join(bundle, 'blobs');
     for (const entry of blobIndex) {
@@ -69,6 +113,14 @@ function importBlobs(store, bundle, blobIndex, verbose) {
     if (verbose) console.log(`Imported ${blobIndex.length} blobs`);
 }
 
+/**
+ * @param {V.DefinitionsConst} definitions
+ * @param {string} bundle
+ * @param {SetDocument} setDocument
+ * @param {boolean} verbose
+ * @param {string} fmt
+ * @returns {number} the number of documents imported
+ */
 function importDocuments(definitions, bundle, setDocument, verbose, fmt) {
     const documentsDir = path.join(bundle, 'documents');
     let total = 0;
@@ -78,10 +130,11 @@ function importDocuments(definitions, bundle, setDocument, verbose, fmt) {
         // entry.key / entry.document are the exact wire TEXT emitted at export (see the note there);
         // fed straight to from{Json,Xml}String, losslessly — no JS-object round-trip that would
         // collapse a whole-number double.
-        for (const entry of readJson(p)) {
-            const key = fmt === 'xml'
+        for (const entry of /** @type {DocumentEntry[]} */ (readJson(p))) {
+            // Decoded against the attachment's key type, the key is a ValueKey.
+            const key = /** @type {V.ValueKey} */ (fmt === 'xml'
                 ? Value.fromXmlString(entry.key, attachment.typeKey(), definitions)
-                : Value.fromJsonString(entry.key, attachment.typeKey(), definitions);
+                : Value.fromJsonString(entry.key, attachment.typeKey(), definitions));
             const document = fmt === 'xml'
                 ? Value.fromXmlString(entry.document, attachment.documentType(), definitions)
                 : Value.fromJsonString(entry.document, attachment.documentType(), definitions);
@@ -93,6 +146,16 @@ function importDocuments(definitions, bundle, setDocument, verbose, fmt) {
     return total;
 }
 
+/**
+ * @param {string} output
+ * @param {string | undefined} documentation
+ * @param {V.DefinitionsConst} definitions
+ * @param {string} bundle
+ * @param {BlobIndexEntry[]} blobIndex
+ * @param {boolean} verbose
+ * @param {string} fmt
+ * @returns {{ count: number, hexdigest: string }}
+ */
 function importIntoDatabase(output, documentation, definitions, bundle, blobIndex, verbose, fmt) {
     const db = Database.create(output, documentation);
     try {
@@ -111,6 +174,17 @@ function importIntoDatabase(output, documentation, definitions, bundle, blobInde
     }
 }
 
+/**
+ * @param {string} output
+ * @param {string | undefined} documentation
+ * @param {V.DefinitionsConst} definitions
+ * @param {string} bundle
+ * @param {BlobIndexEntry[]} blobIndex
+ * @param {string} label
+ * @param {boolean} verbose
+ * @param {string} fmt
+ * @returns {{ count: number, hexdigest: string }}
+ */
 function importIntoCommitDatabase(output, documentation, definitions, bundle, blobIndex, label, verbose, fmt) {
     const cdb = CommitDatabase.create(output, documentation);
     try {
@@ -129,6 +203,12 @@ function importIntoCommitDatabase(output, documentation, definitions, bundle, bl
     }
 }
 
+/**
+ * @param {BundleManifest} manifest
+ * @param {number} documentCount
+ * @param {BlobIndexEntry[]} blobIndex
+ * @param {string} hexdigest
+ */
 function verify(manifest, documentCount, blobIndex, hexdigest) {
     const counts = manifest.counts || {};
     if (counts.documents != null && counts.documents !== documentCount)
@@ -143,6 +223,7 @@ function verify(manifest, documentCount, blobIndex, hexdigest) {
 
 function main() {
     const argv = process.argv.slice(2);
+    /** @type {{ label: string, documentation: string | undefined, force: boolean, verbose: boolean, targetKind: string | null }} */
     const args = { label: 'import', documentation: undefined, force: false, verbose: false, targetKind: null };
     const pos = [];
     for (let i = 0; i < argv.length; i++) {

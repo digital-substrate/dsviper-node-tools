@@ -23,7 +23,8 @@
   },
   "scripts": {
     "test": "node --test",
-    "prepublishOnly": "npm test"
+    "prepublishOnly": "npm test",
+    "typecheck": "tsc -p tsconfig.json"
   },
   "peerDependencies": {
     "@digitalsubstrate/dsviper": ">=1.2.9 <2"
@@ -48,5 +49,9 @@
   "publishConfig": {
     "access": "public"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^26.6.2",
+    "typescript": "^6.0.3"
+  }
 }

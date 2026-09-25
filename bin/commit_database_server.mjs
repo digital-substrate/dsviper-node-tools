@@ -15,10 +15,27 @@ import dsviper from '../src/dsviper.mjs';
 
 const { Cancelation, CommitDatabase, CommitDatabaseServer, LoggerConsole, LoggerNull, Logging, Socket } = dsviper;
 
-const fail = (m) => { console.error(m); process.exit(1); };
-const expand = (p) => (p ? p.replace(/^~(?=$|\/)/, homedir()) : p);
+/**
+ * The parsed command line.
+ * @typedef {object} ServerArgs
+ * @property {number} verbose
+ * @property {string} host
+ * @property {string} port
+ * @property {string | null} socketPath
+ * @property {string | null} database
+ * @property {boolean} [help]
+ */
 
+/** @type {(m: string) => never} */
+const fail = (m) => { console.error(m); process.exit(1); };
+const expand = (/** @type {string} */ p) => (p ? p.replace(/^~(?=$|\/)/, homedir()) : p);
+
+/**
+ * @param {string[]} argv
+ * @returns {ServerArgs}
+ */
 function parseArgs(argv) {
+    /** @type {ServerArgs} */
     const a = { verbose: 0, host: '0.0.0.0', port: '54321', socketPath: null, database: null };
     for (let i = 0; i < argv.length; i++) {
         const v = argv[i];

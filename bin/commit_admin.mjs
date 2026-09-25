@@ -11,11 +11,34 @@ import dsviper from '../src/dsviper.mjs';
 
 const { CommitDatabase, CommitDatabaseHelper, CommitSynchronizer, LoggerConsole, LoggerNull, Logging } = dsviper;
 
-const fail = (m) => { console.error(m); process.exit(1); };
-const expand = (p) => (p ? p.replace(/^~(?=$|\/)/, homedir()) : p);
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+/** @import * as V from '@digitalsubstrate/dsviper' */
 
+/**
+ * The parsed command line.
+ * @typedef {object} AdminArgs
+ * @property {number} verbose
+ * @property {string | null} database
+ * @property {string | null} host
+ * @property {string} port
+ * @property {string | null} socketPath
+ * @property {string | null} sub
+ * @property {string | null} file
+ * @property {boolean} loop
+ * @property {number | null} updateInterval
+ * @property {number} blobDataSize
+ */
+
+/** @type {(m: string) => never} */
+const fail = (m) => { console.error(m); process.exit(1); };
+const expand = (/** @type {string} */ p) => (p ? p.replace(/^~(?=$|\/)/, homedir()) : p);
+const sleep = (/** @type {number} */ ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * @param {string[]} argv
+ * @returns {AdminArgs}
+ */
 function parseArgs(argv) {
+    /** @type {AdminArgs} */
     const a = { verbose: 0, database: null, host: null, port: '54321', socketPath: null,
                 sub: null, file: null, loop: false, updateInterval: null, blobDataSize: 25 };
     const pos = [];
@@ -41,23 +64,29 @@ function parseArgs(argv) {
 // The CommitDatabase for the source (local file / socket / host:port). open()/connect()/
 // connectLocal() already return a CommitDatabase — no need to reconstruct one from its
 // CommitDatabasing (the runtime forbids that anyway; use the static factories).
+/**
+ * @param {AdminArgs} args
+ * @returns {V.CommitDatabase}
+ */
 function openSource(args) {
     if (args.database == null && args.host == null && args.socketPath == null)
         fail('use --database, --host or --socket-path to specify the source');
     let db, description;
     if (args.database) { db = CommitDatabase.open(expand(args.database)); description = args.database; }
     else if (args.socketPath) { db = CommitDatabase.connectLocal(args.socketPath); description = args.socketPath; }
-    else { db = CommitDatabase.connect(args.host, String(args.port)); description = `${args.host}:${args.port}`; }
+    else { db = CommitDatabase.connect(/** @type {string} */ (args.host), String(args.port)); description = `${args.host}:${args.port}`; }
     if (args.verbose) console.log(`Server: ${description}`);
     return db;
 }
 
+/** @param {AdminArgs} args */
 function reset(args) {
     const db = openSource(args);
     db.commitDatabasing().resetCommits();
     db.close();
 }
 
+/** @param {AdminArgs} args */
 async function reduceHeads(args) {
     const db = openSource(args);
     const interval = (args.updateInterval ?? 2) * 1000;
@@ -66,6 +95,7 @@ async function reduceHeads(args) {
     db.close();
 }
 
+/** @param {AdminArgs} args */
 async function sync(args) {
     if (!args.file) fail('usage: commit_admin sync <file> [--loop] [--update-interval sec] [--blob-data-size Mo]');
     const sourceDb = openSource(args);

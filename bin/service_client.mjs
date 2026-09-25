@@ -20,13 +20,21 @@ import dsviper from '../src/dsviper.mjs';
 import { buildPools, nameOf, signatureOf } from '../src/service_pools.mjs';
 import { parseEndpoint } from '../src/endpoint.mjs';
 
+/** @import * as V from '@digitalsubstrate/dsviper' */
+
 const { Definitions, ServiceRemote } = dsviper;
+/**
+ * @template T
+ * @param {() => T} fn
+ * @returns {T | undefined}
+ */
 const safe = (fn) => { try { return fn(); } catch { /* ignore */ } };
 
 // Forgiving endpoint parsing (src/endpoint.mjs) — `host`, `port`, `host:port`, or `host port`.
 const { host, port } = parseEndpoint(process.argv.slice(2));
 
 const defs = new Definitions();
+/** @type {V.ServiceRemote} */
 let s;
 try {
     s = ServiceRemote.connect(host, port, defs);
@@ -40,7 +48,7 @@ const pools = buildPools(() => s.functionPools(), (p, f) => s.functionPoolFunc(p
 const attachmentPools = buildPools(
     () => s.attachmentFunctionPools(), (p, f) => s.attachmentFunctionPoolFunc(p, f), 'AttachmentPools');
 // Match Python's `s.pools.…` when the native handle accepts the extra property.
-safe(() => { s.pools = pools; s.attachmentPools = attachmentPools; });
+safe(() => { Object.assign(s, { pools, attachmentPools }); });
 
 // Banner introspected from THIS service — only its real pools/functions, so the hints are
 // always truthful (the client is universal; nothing is hard-coded to a particular schema).

@@ -5,6 +5,16 @@ All notable changes to this package. Format: [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+### Fixed
+
+- **`database_export` read id sets as arrays.** A binding returning them as `ValueSet` made the
+  head list and the blob index throw; they are spread first, which works with either.
+
+### Changed
+
+- **Typed against the binding's declarations.** `npm run typecheck` runs TypeScript over the
+  package's `.mjs` through JSDoc; no call into the binding is made on an untyped receiver.
+
 ### Added
 
 - Initial Node port of the headless Python `dsviper-tools`, over `@digitalsubstrate/dsviper`.

@@ -9,8 +9,14 @@ import dsviper from '../src/dsviper.mjs';
 
 const { DSMDefinitions, DSMBuilder, CommitDatabase, Database } = dsviper;
 
-const expand = (p) => p.replace(/^~(?=$|\/)/, os.homedir());
+/** @import * as V from '@digitalsubstrate/dsviper' */
 
+const expand = (/** @type {string} */ p) => p.replace(/^~(?=$|\/)/, os.homedir());
+
+/**
+ * @param {V.DSMParseReport} report
+ * @param {string} message
+ */
 function fatalReportError(report, message) {
     if (report.hasError()) {
         console.log(message);
@@ -20,31 +26,49 @@ function fatalReportError(report, message) {
     }
 }
 
+/** @param {string} input */
 function check(input) {
     const [report] = DSMBuilder.assemble(expand(input)).parse();
     if (report.hasError()) {
-        for (const error of report.errors()) console.log(String(error.representation?.() ?? error));
+        for (const error of report.errors()) console.log(String(error));
         return 1;
     }
     return 0;
 }
 
+/**
+ * @param {string} input
+ * @param {string} outJson
+ */
 function encode(input, outJson) {
     const [report, dsmDefinitions] = DSMBuilder.assemble(expand(input)).parse();
     fatalReportError(report, "can't encode dsm definitions.");
+    if (!dsmDefinitions) throw new Error("can't encode dsm definitions: the parser returned none.");
     fs.writeFileSync(expand(outJson), dsmDefinitions.toJsonString());
     return 0;
 }
 
+/**
+ * @param {string} inJson
+ * @param {string} outDsm
+ */
 function decode(inJson, outDsm) {
     const dsmDefinitions = DSMDefinitions.fromJsonString(fs.readFileSync(expand(inJson), 'utf-8'));
     fs.writeFileSync(expand(outDsm), dsmDefinitions.toDsm());
     return 0;
 }
 
+/**
+ * @param {typeof Database | typeof CommitDatabase} ctor
+ * @param {string} input
+ * @param {string} output
+ * @param {string} documentation
+ * @param {boolean} force
+ */
 function createDb(ctor, input, output, documentation, force) {
     const [report, , definitions] = DSMBuilder.assemble(expand(input)).parse();
     fatalReportError(report, "can't create a database.");
+    if (!definitions) throw new Error("can't create a database: the parser returned no definitions.");
     const out = expand(output);
     if (fs.existsSync(out) && force) fs.rmSync(out);
     const db = ctor.create(out, documentation);

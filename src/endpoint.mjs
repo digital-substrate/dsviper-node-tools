@@ -8,6 +8,11 @@
 export const DEFAULT_HOST = 'localhost';
 export const DEFAULT_PORT = '54328';
 
+/**
+ * Parse a service endpoint from command-line arguments.
+ * @param {string[]} argv the arguments after the script name
+ * @returns {{ host: string, port: string }} the endpoint, defaults filled in
+ */
 export function parseEndpoint(argv) {
     let host = DEFAULT_HOST, port = DEFAULT_PORT;
     if (argv.length === 1) {

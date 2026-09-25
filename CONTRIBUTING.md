@@ -22,6 +22,9 @@ Useful reports include:
 3. Add tests under `test/` with the built-in `node:test` runner and `node:assert`;
    run `npm test` and make sure everything passes. The CLI smoke tests need the peer binding
    (`@digitalsubstrate/dsviper`) installed; the pure helper tests do not.
+   Run `npm run typecheck` too: TypeScript checks every call into the binding against its
+   declarations, in plain `.mjs` through JSDoc. A call on an untyped receiver is checked for
+   nothing, so type what you add.
 
 ## Design notes
 

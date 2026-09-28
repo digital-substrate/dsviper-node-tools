@@ -27,7 +27,7 @@ jobs:
 
       # Release gate: the peer binding must be published (1.2 line) and the suite green.
       - name: Install peer binding
-        run: npm install --no-save "@digitalsubstrate/dsviper@>=1.2.8 <2"
+        run: npm install --no-save "@digitalsubstrate/dsviper@>=1.2.13 <2"
 
       - name: Test
         run: npm test

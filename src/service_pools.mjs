@@ -26,8 +26,12 @@
  * @typedef {V.ServiceRemoteFunction | V.ServiceRemoteAttachmentFunction} RemoteFunction
  */
 /**
+ * An argument forwarded as given: an attachment function takes its AttachmentMutating first.
+ * @typedef {V.InputValue | V.AttachmentMutating} PoolArgument
+ */
+/**
  * One pool's view: function name -> callable remote function.
- * @typedef {Record<string, (...args: V.InputValue[]) => V.OutputValue>} PoolView
+ * @typedef {Record<string, (...args: PoolArgument[]) => V.OutputValue>} PoolView
  */
 /**
  * A service's pools view: pool name -> pool view.
@@ -71,7 +75,8 @@ function buildPool(poolName, pool, getFunc) {
         const signature = signatureOf(func);
         const funcName = nameOf(func);
         const doc = safe(() => func.documentation(), '');
-        const call = (/** @type {V.InputValue[]} */ ...args) => getFunc(poolName, funcName).call(...args);
+        const call = (/** @type {PoolArgument[]} */ ...args) =>
+            /** @type {{ call(...args: PoolArgument[]): V.OutputValue }} */ (getFunc(poolName, funcName)).call(...args);
         call[INSPECT] = () => (doc ? `${signature}\n${doc}` : signature);
         poolObj[funcName] = call;
     }

@@ -41,7 +41,7 @@ for exactly this reason.
 ## Dev
 
 In development `node_modules/@digitalsubstrate/dsviper` is npm-linked onto the viper repo's
-`dsviper_node`; on publish it is a normal peer dependency (`>=1.2.3`).
+`dsviper_node`; on publish it is a normal peer dependency (`>=1.2.13`).
 
 ## License
 

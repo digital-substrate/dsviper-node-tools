@@ -9,9 +9,13 @@ All notable changes to this package. Format: [Keep a Changelog](https://keepacha
 
 - **`database_export` read id sets as arrays.** A binding returning them as `ValueSet` made the
   head list and the blob index throw; they are spread first, which works with either.
+- **`service_client` typed an attachment call as plain values.** An attachment function takes its
+  `AttachmentMutating` first, as the binding now declares; the pool view says so.
 
 ### Changed
 
+- **Requires `@digitalsubstrate/dsviper` >= 1.2.13,** the release whose declarations the
+  package is typed against, and the first to return id sets as `ValueSet`.
 - **Typed against the binding's declarations.** `npm run typecheck` runs TypeScript over the
   package's `.mjs` through JSDoc; no call into the binding is made on an untyped receiver.
 
@@ -41,4 +45,4 @@ All notable changes to this package. Format: [Keep a Changelog](https://keepacha
 ### Requirements
 
 - Node.js >= 22.
-- `@digitalsubstrate/dsviper` >= 1.2.3 (the binding stub fixes the tools rely on).
+- `@digitalsubstrate/dsviper` >= 1.2.13.

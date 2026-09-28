@@ -39,7 +39,7 @@ decoder rejects). Use the JSON text channel or the binary `encode`/`decode` chan
 
 ## Requirements
 
-Node.js >= 22; `@digitalsubstrate/dsviper` >= 1.2.3.
+Node.js >= 22; `@digitalsubstrate/dsviper` >= 1.2.13.
 
 ## License
 

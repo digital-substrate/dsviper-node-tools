@@ -7,6 +7,12 @@ All notable changes to this package. Format: [Keep a Changelog](https://keepacha
 
 ### Fixed
 
+- **`database_import` gives back every document of a bundle, or refuses it.** It matched each
+  attachment to its file by identifier, whose spelling the 1.2.29 runtime changed for an
+  attachment keyed by another namespace's concept: a bundle exported with one binding version
+  lost those documents in the other, with a warning. The manifest lists the attachments by
+  runtime id; a file no attachment claims, or a document count the manifest does not state,
+  stops the import before it writes anything.
 - **`database_export` read id sets as arrays.** A binding returning them as `ValueSet` made the
   head list and the blob index throw; they are spread first, which works with either.
 - **`service_client` typed an attachment call as plain values.** An attachment function takes its
@@ -14,6 +20,9 @@ All notable changes to this package. Format: [Keep a Changelog](https://keepacha
 
 ### Changed
 
+- **A bundle is the one `dsviper-tools` writes** (`bundle_version` 2): either tool reads the
+  other's. A bundle dsviper-tools 1.2.0 wrote, its documents as JSON objects, is refused:
+  JavaScript cannot read them back without turning a whole-number double into an integer.
 - **Requires `@digitalsubstrate/dsviper` >= 1.2.13,** the release whose declarations the
   package is typed against, and the first to return id sets as `ValueSet`.
 - **Typed against the binding's declarations.** `npm run typecheck` runs TypeScript over the

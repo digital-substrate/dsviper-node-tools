@@ -23,8 +23,8 @@ All notable changes to this package. Format: [Keep a Changelog](https://keepacha
 - **A bundle is the one `dsviper-tools` writes** (`bundle_version` 2): either tool reads the
   other's. A bundle dsviper-tools 1.2.0 wrote, its documents as JSON objects, is refused:
   JavaScript cannot read them back without turning a whole-number double into an integer.
-- **Requires `@digitalsubstrate/dsviper` >= 1.2.13,** the release whose declarations the
-  package is typed against, and the first to return id sets as `ValueSet`.
+- **Requires `@digitalsubstrate/dsviper` >= 1.2.15,** the release whose declarations the
+  package is typed against, and whose bundles find attachments by runtime id.
 - **Typed against the binding's declarations.** `npm run typecheck` runs TypeScript over the
   package's `.mjs` through JSDoc; no call into the binding is made on an untyped receiver.
 

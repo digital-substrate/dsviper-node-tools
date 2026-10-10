@@ -19,6 +19,7 @@ const { Database, CommitDatabase, CommitState, CommitMutableState, DSMDefinition
  * @property {string} [definitions_hexdigest]
  * @property {string} [format]
  * @property {{ documents?: number, blobs?: number }} [counts]
+ * @property {{ runtime_id: string, identifier: string, file: string }[]} [attachments]
  */
 /**
  * One entry of the bundle's blob index.
@@ -29,6 +30,10 @@ const { Database, CommitDatabase, CommitState, CommitMutableState, DSMDefinition
  * @typedef {{ key: string, document: string }} DocumentEntry
  */
 /**
+ * The documents of one attachment, found by its runtime id.
+ * @typedef {[runtimeId: string, entries: DocumentEntry[]]} PlannedDocuments
+ */
+/**
  * Stores one document in the target.
  * @typedef {(attachment: V.Attachment, key: V.ValueKey, document: V.Value) => unknown} SetDocument
  */
@@ -37,7 +42,6 @@ const CHUNK_SIZE = 48 * 1024 * 1024;
 /** @type {(m: string) => never} */
 const fail = (m) => { console.error(m); process.exit(1); };
 const readJson = (/** @type {string} */ p) => JSON.parse(fs.readFileSync(p, 'utf-8'));
-const safeName = (/** @type {string} */ id) => id.replace(/[^A-Za-z0-9._-]+/g, '_');
 const expand = (/** @type {string} */ p) => p.replace(/^~(?=$|\/)/, os.homedir());
 
 /**
@@ -113,24 +117,73 @@ function importBlobs(store, bundle, blobIndex, verbose) {
     if (verbose) console.log(`Imported ${blobIndex.length} blobs`);
 }
 
+const runtimeId = (/** @type {V.Attachment} */ attachment) => String(attachment.runtimeId().encoded());
+const PYTHON_OBJECTS = 'This bundle holds its documents as JSON objects, as database_export of dsviper-tools 1.2.0 '
+    + 'wrote them: JavaScript cannot read them back without turning a whole-number double into an integer. '
+    + 'Import it with dsviper-tools, or export it again.';
+
 /**
+ * Every documents file of the bundle, by attachment runtime id; or fail before anything is
+ * written: a file no attachment claims, or a count the manifest does not state, is data lost.
+ *
+ * A bundle lists its attachments by runtime id, the identity that holds across runtime versions;
+ * an identifier is a name, and `App::Lib::User.profile` was `Lib::User.profile` before the 1.2.29
+ * runtime. A bundle without that list was written by dsviper-tools 1.2.0, its documents as JSON
+ * objects that JavaScript cannot read back losslessly.
  * @param {V.DefinitionsConst} definitions
  * @param {string} bundle
+ * @param {BundleManifest} manifest
+ * @returns {PlannedDocuments[]}
+ */
+function planDocuments(definitions, bundle, manifest) {
+    const documentsDir = path.join(bundle, 'documents');
+    const present = fs.existsSync(documentsDir)
+        ? fs.readdirSync(documentsDir).filter((f) => f.endsWith('.json')).sort() : [];
+    if (!manifest.attachments) fail(PYTHON_OBJECTS);
+    /** @type {[V.Attachment, string][]} */
+    const claimed = [];
+    const byRuntimeId = new Map(manifest.attachments.map((e) => [e.runtime_id, e]));
+    for (const attachment of definitions.attachments()) {
+        const entry = byRuntimeId.get(runtimeId(attachment));
+        if (!entry) continue;
+        byRuntimeId.delete(entry.runtime_id);
+        claimed.push([attachment, entry.file]);
+    }
+    if (byRuntimeId.size)
+        fail(`The bundle lists attachments its definitions do not hold: ${[...byRuntimeId.values()].map((e) => e.identifier).sort().join(', ')}`);
+
+    const files = new Set(claimed.map(([, file]) => file));
+    const orphans = present.filter((f) => !files.has(f));
+    if (orphans.length) fail(`Documents no attachment of the bundle's definitions claims: ${orphans.join(', ')}.`);
+
+    /** @type {PlannedDocuments[]} */
+    const plan = claimed.map(([attachment, file]) => [runtimeId(attachment), readJson(path.join(documentsDir, file))]);
+    for (const [, entries] of plan)
+        if (entries.some((e) => typeof e.key !== 'string' || typeof e.document !== 'string')) fail(PYTHON_OBJECTS);
+    const count = plan.reduce((n, [, entries]) => n + entries.length, 0);
+    const expected = manifest.counts?.documents;
+    if (expected != null && expected !== count) fail(`The bundle holds ${count} documents, its manifest states ${expected}.`);
+    return plan;
+}
+
+/**
+ * @param {V.DefinitionsConst} definitions
+ * @param {PlannedDocuments[]} plan
  * @param {SetDocument} setDocument
  * @param {boolean} verbose
  * @param {string} fmt
  * @returns {number} the number of documents imported
  */
-function importDocuments(definitions, bundle, setDocument, verbose, fmt) {
-    const documentsDir = path.join(bundle, 'documents');
+function importDocuments(definitions, plan, setDocument, verbose, fmt) {
+    const attachments = new Map(definitions.attachments().map((a) => [runtimeId(a), a]));
     let total = 0;
-    for (const attachment of definitions.attachments()) {
-        const p = path.join(documentsDir, `${safeName(attachment.identifier())}.json`);
-        if (!fs.existsSync(p)) continue;
+    for (const [attachmentRuntimeId, entries] of plan) {
+        const attachment = attachments.get(attachmentRuntimeId);
+        if (!attachment) fail(`No attachment ${attachmentRuntimeId} in the definitions the target was given.`);
         // entry.key / entry.document are the exact wire TEXT emitted at export (see the note there);
         // fed straight to from{Json,Xml}String, losslessly — no JS-object round-trip that would
         // collapse a whole-number double.
-        for (const entry of /** @type {DocumentEntry[]} */ (readJson(p))) {
+        for (const entry of entries) {
             // Decoded against the attachment's key type, the key is a ValueKey.
             const key = /** @type {V.ValueKey} */ (fmt === 'xml'
                 ? Value.fromXmlString(entry.key, attachment.typeKey(), definitions)
@@ -151,19 +204,20 @@ function importDocuments(definitions, bundle, setDocument, verbose, fmt) {
  * @param {string | undefined} documentation
  * @param {V.DefinitionsConst} definitions
  * @param {string} bundle
+ * @param {PlannedDocuments[]} plan
  * @param {BlobIndexEntry[]} blobIndex
  * @param {boolean} verbose
  * @param {string} fmt
  * @returns {{ count: number, hexdigest: string }}
  */
-function importIntoDatabase(output, documentation, definitions, bundle, blobIndex, verbose, fmt) {
+function importIntoDatabase(output, documentation, definitions, bundle, plan, blobIndex, verbose, fmt) {
     const db = Database.create(output, documentation);
     try {
         db.extendDefinitions(definitions);
         const live = db.definitions();
         db.beginTransaction();
         importBlobs(db.databasing(), bundle, blobIndex, verbose);
-        const count = importDocuments(live, bundle, (a, k, d) => db.set(a, k, d), verbose, fmt);
+        const count = importDocuments(live, plan, (a, k, d) => db.set(a, k, d), verbose, fmt);
         db.commit();
         return { count, hexdigest: db.definitionsHexdigest() };
     } catch (e) {
@@ -179,13 +233,14 @@ function importIntoDatabase(output, documentation, definitions, bundle, blobInde
  * @param {string | undefined} documentation
  * @param {V.DefinitionsConst} definitions
  * @param {string} bundle
+ * @param {PlannedDocuments[]} plan
  * @param {BlobIndexEntry[]} blobIndex
  * @param {string} label
  * @param {boolean} verbose
  * @param {string} fmt
  * @returns {{ count: number, hexdigest: string }}
  */
-function importIntoCommitDatabase(output, documentation, definitions, bundle, blobIndex, label, verbose, fmt) {
+function importIntoCommitDatabase(output, documentation, definitions, bundle, plan, blobIndex, label, verbose, fmt) {
     const cdb = CommitDatabase.create(output, documentation);
     try {
         cdb.extendDefinitions(definitions);
@@ -195,7 +250,7 @@ function importIntoCommitDatabase(output, documentation, definitions, bundle, bl
         importBlobs(store, bundle, blobIndex, verbose);
         store.commit();
         const mutable = new CommitMutableState(new CommitState(live));
-        const count = importDocuments(live, bundle, (a, k, d) => mutable.attachmentMutating().set(a, k, d), verbose, fmt);
+        const count = importDocuments(live, plan, (a, k, d) => mutable.attachmentMutating().set(a, k, d), verbose, fmt);
         cdb.commitMutations(label, mutable);
         return { count, hexdigest: cdb.definitionsHexdigest() };
     } finally {
@@ -205,14 +260,11 @@ function importIntoCommitDatabase(output, documentation, definitions, bundle, bl
 
 /**
  * @param {BundleManifest} manifest
- * @param {number} documentCount
  * @param {BlobIndexEntry[]} blobIndex
  * @param {string} hexdigest
  */
-function verify(manifest, documentCount, blobIndex, hexdigest) {
+function verify(manifest, blobIndex, hexdigest) {
     const counts = manifest.counts || {};
-    if (counts.documents != null && counts.documents !== documentCount)
-        console.error(`Warning: document count mismatch (manifest ${counts.documents}, imported ${documentCount}).`);
     if (counts.blobs != null && counts.blobs !== blobIndex.length)
         console.error(`Warning: blob count mismatch (manifest ${counts.blobs}, imported ${blobIndex.length}).`);
     if (manifest.definitions_hexdigest && manifest.definitions_hexdigest !== hexdigest)
@@ -241,32 +293,33 @@ function main() {
 
     const bundle = expand(bundleArg);
     if (!fs.existsSync(bundle) || !fs.statSync(bundle).isDirectory()) fail(`No such bundle directory: ${bundle}`);
-    const output = expand(outputArg);
-    if (fs.existsSync(output)) {
-        if (!args.force) fail(`Output already exists (use --force to overwrite): ${output}`);
-        fs.rmSync(output);
-    }
-
     const manifest = loadManifest(bundle);
     const fmt = manifest.format || 'json';
     if (fmt === 'xml' && typeof Value.fromXmlString !== 'function')
         fail('bundle is in XML format but the installed dsviper lacks XML support.');
     const definitions = loadDefinitions(bundle, fmt);
     const blobIndex = loadBlobIndex(bundle);
+    const plan = planDocuments(definitions, bundle, manifest);
+
+    const output = expand(outputArg);
+    if (fs.existsSync(output)) {
+        if (!args.force) fail(`Output already exists (use --force to overwrite): ${output}`);
+        fs.rmSync(output);
+    }
 
     const kind = args.targetKind || (manifest.source_type === 'CommitDatabase' ? 'commit-database' : 'database');
     const documentation = args.documentation !== undefined ? args.documentation : (manifest.documentation || undefined);
 
     let result, label;
     if (kind === 'commit-database') {
-        result = importIntoCommitDatabase(output, documentation, definitions, bundle, blobIndex, args.label, args.verbose, fmt);
+        result = importIntoCommitDatabase(output, documentation, definitions, bundle, plan, blobIndex, args.label, args.verbose, fmt);
         label = 'CommitDatabase';
     } else {
-        result = importIntoDatabase(output, documentation, definitions, bundle, blobIndex, args.verbose, fmt);
+        result = importIntoDatabase(output, documentation, definitions, bundle, plan, blobIndex, args.verbose, fmt);
         label = 'Database';
     }
 
-    verify(manifest, result.count, blobIndex, result.hexdigest);
+    verify(manifest, blobIndex, result.hexdigest);
     if (args.verbose) console.log(`Wrote ${label} to ${output} (${result.count} documents, ${blobIndex.length} blobs)`);
 }
 

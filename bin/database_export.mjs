@@ -47,11 +47,20 @@ const { Database, CommitDatabase, CommitStateBuilder, Value, ValueCommitId } = d
  * @property {string} codec
  * @property {string} definitions_hexdigest
  * @property {string | null} commit_id
+ * @property {number} bundle_version
  * @property {{ attachments: number, documents: number, blobs: number }} counts
+ * @property {AttachmentFile[]} attachments
  * @property {string} [format]
+ */
+/**
+ * Where an attachment's documents are: the import finds the attachment by its runtime id, the
+ * identity that holds across runtime versions; the identifier is a name, and its spelling changed.
+ * @typedef {{ runtime_id: string, identifier: string, file: string }} AttachmentFile
  */
 
 const CHUNK_SIZE = 48 * 1024 * 1024;
+// 2: documents as Viper's text, attachments listed by runtime id in the manifest.
+const BUNDLE_VERSION = 2;
 
 // String form of an id value (CommitId/BlobId/UUId). `.encoded()` is the projection; fall
 // back to representation() where it is not a plain string.
@@ -145,11 +154,11 @@ const exportDefinitions = (src, fmt) => {
 /**
  * @param {Source} src
  * @param {'json' | 'xml'} fmt
- * @returns {{ documents: Record<string, DocumentEntry[]>, total: number }}
+ * @returns {{ documents: [V.Attachment, DocumentEntry[]][], total: number }}
  */
 function exportDocuments(src, fmt) {
-    /** @type {Record<string, DocumentEntry[]>} */
-    const documents = {};
+    /** @type {[V.Attachment, DocumentEntry[]][]} */
+    const documents = [];
     let total = 0;
     for (const attachment of src.definitions.attachments()) {
         /** @type {DocumentEntry[]} */
@@ -164,7 +173,7 @@ function exportDocuments(src, fmt) {
                 ? { key: Value.toXmlString(key), document: Value.toXmlString(document) }
                 : { key: Value.toJsonString(key), document: Value.toJsonString(document) });
         }
-        documents[attachment.identifier()] = entries;
+        documents.push([attachment, entries]);
         total += entries.length;
     }
     return { documents, total };
@@ -185,14 +194,31 @@ function exportBlobIndex(src) {
 }
 
 /**
+ * @param {[V.Attachment, DocumentEntry[]][]} documents
+ * @returns {AttachmentFile[]}
+ */
+function documentFiles(documents) {
+    const taken = new Set();
+    return documents.map(([attachment]) => {
+        const runtimeId = enc(attachment.runtimeId());
+        let file = `${safeName(attachment.identifier())}.json`;
+        if (taken.has(file)) file = `${safeName(attachment.identifier())}.${runtimeId}.json`; // two identifiers spelled alike once made safe
+        taken.add(file);
+        return { runtime_id: runtimeId, identifier: attachment.identifier(), file };
+    });
+}
+
+/**
  * @param {Source} src
+ * @param {[V.Attachment, DocumentEntry[]][]} documents
  * @param {number} documentCount
  * @param {BlobIndexEntry[]} blobIndex
  * @returns {Manifest}
  */
-function buildManifest(src, documentCount, blobIndex) {
+function buildManifest(src, documents, documentCount, blobIndex) {
     const h = src.handle;
     return {
+        bundle_version: BUNDLE_VERSION,
         source_type: src.kind,
         path: h.path(),
         uuid: enc(h.uuid()),
@@ -201,6 +227,7 @@ function buildManifest(src, documentCount, blobIndex) {
         definitions_hexdigest: h.definitionsHexdigest(),
         commit_id: src.commitId ? enc(src.commitId) : null,
         counts: { attachments: src.definitions.attachments().length, documents: documentCount, blobs: blobIndex.length },
+        attachments: documentFiles(documents),
     };
 }
 
@@ -226,7 +253,7 @@ const dumpJson = (p, value, indent) => fs.writeFileSync(p, JSON.stringify(value,
  * @param {ExportArgs} args
  * @param {Manifest} manifest
  * @param {unknown} definitions
- * @param {Record<string, DocumentEntry[]>} documents
+ * @param {[V.Attachment, DocumentEntry[]][]} documents
  * @param {BlobIndexEntry[]} blobIndex
  * @returns {string} the bundle directory
  */
@@ -242,8 +269,7 @@ function writeBundle(src, args, manifest, definitions, documents, blobIndex) {
         fs.writeFileSync(path.join(outDir, 'definitions.xml'), definitions + '\n');
     else
         dumpJson(path.join(outDir, 'definitions.json'), definitions, args.indent);
-    for (const [identifier, entries] of Object.entries(documents))
-        dumpJson(path.join(documentsDir, `${safeName(identifier)}.json`), entries, args.indent);
+    documents.forEach(([, entries], i) => dumpJson(path.join(documentsDir, manifest.attachments[i].file), entries, args.indent));
 
     dumpJson(path.join(blobsDir, 'index.json'), blobIndex, args.indent);
     const blobIds = new Map([...src.handle.blobIds()].map((b) => [enc(b), b]));
@@ -271,7 +297,7 @@ function main() {
         const definitions = exportDefinitions(src, args.format);
         const { documents, total } = exportDocuments(src, args.format);
         const blobIndex = exportBlobIndex(src);
-        const manifest = buildManifest(src, total, blobIndex);
+        const manifest = buildManifest(src, documents, total, blobIndex);
         manifest.format = args.format;
         writeBundle(src, args, manifest, definitions, documents, blobIndex);
     } finally {

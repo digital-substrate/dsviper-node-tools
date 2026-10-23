@@ -26,8 +26,8 @@
  * @typedef {V.ServiceRemoteFunction | V.ServiceRemoteAttachmentFunction} RemoteFunction
  */
 /**
- * An argument forwarded as given: an attachment function takes its AttachmentMutating first.
- * @typedef {V.InputValue | V.AttachmentMutating} PoolArgument
+ * An argument forwarded as given: an attachment function takes its CommitAttachmentMutating first.
+ * @typedef {V.InputValue | V.CommitAttachmentMutating} PoolArgument
  */
 /**
  * One pool's view: function name -> callable remote function.

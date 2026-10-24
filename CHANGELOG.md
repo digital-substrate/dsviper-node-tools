@@ -16,10 +16,13 @@ All notable changes to this package. Format: [Keep a Changelog](https://keepacha
 - **`database_export` read id sets as arrays.** A binding returning them as `ValueSet` made the
   head list and the blob index throw; they are spread first, which works with either.
 - **`service_client` typed an attachment call as plain values.** An attachment function takes its
-  `AttachmentMutating` first, as the binding now declares; the pool view says so.
+  `CommitAttachmentMutating` first, as the binding now declares; the pool view says so.
 
 ### Changed
 
+- **Requires `@digitalsubstrate/dsviper >= 1.2.16`**, the first binding to name
+  `CommitAttachmentMutating`, which the type annotations use; the type check fails against an
+  earlier one.
 - **A bundle is the one `dsviper-tools` writes** (`bundle_version` 2): either tool reads the
   other's. A bundle dsviper-tools 1.2.0 wrote, its documents as JSON objects, is refused:
   JavaScript cannot read them back without turning a whole-number double into an integer.
